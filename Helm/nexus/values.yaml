@@ -1,0 +1,46 @@
+nexus:
+  service:
+    type: ClusterIP
+
+nexusProxy:
+  enabled: false
+
+persistence:
+  storageClass: "local-path"
+
+ingress:
+  enabled: true
+  path: /
+  annotations:
+    kubernetes.io/ingress.class: nginx
+  tls:
+    enabled: true
+    secretName: nexus-tls
+  # Specify custom rules in addition to or instead of the nexus-proxy rules
+  rules:
+  - host: nexus.192.168.6.200.nip.io
+    http:
+      paths:
+      - backend:
+          serviceName: demo-nexus-sonatype-nexus
+          servicePort: 8081
+
+ingressDocker:
+  enabled: true
+  path: /
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.org/client-max-body-size: "0"
+  tls:
+    enabled: true
+    - hosts:
+      - registry.192.168.6.200.nip.io
+    secretName: demo-ingress-nginx-ingress-default-server-secret
+  # Specify custom rules in addition to or instead of the nexus-proxy rules
+  rules:
+  - host: registry.192.168.6.200.nip.io
+    http:
+      paths:
+      - backend:
+          serviceName: demo-nexus-sonatype-nexus
+          servicePort: 5003

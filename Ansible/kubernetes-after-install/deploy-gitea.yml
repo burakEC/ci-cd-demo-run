@@ -1,0 +1,16 @@
+---
+- hosts: all
+  remote_user: "vagrant"
+  become: false
+  tasks:
+  - name: Copy the gitea values yaml
+    copy: src=../../Helm/gitea/values.yaml dest=/tmp/gitea-values.yaml mode=0660
+
+  - name: Add keyporttech repo
+    command: helm repo add keyporttech https://keyporttech.github.io/helm-charts/
+
+  - name: Update helm repos
+    command: helm repo update
+
+  - name: Deploy Metallb via Helm
+    command: helm install demo-gitea -f /tmp/gitea-values.yaml keyporttech/gitea

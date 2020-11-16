@@ -1,0 +1,183 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Stop service ufw, if running
+    service:
+      name: ufw
+      state: stopped
+
+  - name: Disable ufw service
+    command: systemctl disable ufw
+
+  - name: Update and upgrade apt packages
+    apt:
+      upgrade: yes
+      update_cache: yes
+
+  - name: Reboot box if kernel/libs updated and requested by the system
+    shell: sleep 10 && /sbin/shutdown -r now 'Rebooting box to update system libs/kernel as needed' 
+    args:
+      removes: /var/run/reboot-required
+    async: 300
+    poll: 0
+    ignore_errors: true
+      
+  - name: Wait for system to become reachable again
+    wait_for_connection:
+      delay: 60
+      timeout: 300
+  
+  - name: Install packages that allow apt to be used over HTTPS
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg-agent
+      - software-properties-common
+
+  - name: Add an apt signing key for Docker
+    apt_key:
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
+
+  - name: Add apt repository for stable version
+    apt_repository:
+      repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable
+      state: present
+
+  - name: Install docker and its dependecies
+    apt: 
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+      - docker-ce 
+      - docker-ce-cli 
+      - containerd.io
+    notify:
+      - docker status
+
+  - name: Add vagrant user to docker group
+    user:
+      name: vagrant
+      group: docker
+
+  - name: Remove swapfile from /etc/fstab
+    mount:
+      name: "{{ item }}"
+      fstype: swap
+      state: absent
+    with_items:
+      - swap
+      - none
+
+  - name: Disable swap
+    command: swapoff -a
+    when: ansible_swaptotal_mb > 0
+
+  - name: Add an apt signing key for Kubernetes
+    apt_key:
+      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+      state: present
+
+  - name: Adding apt repository for Kubernetes
+    apt_repository:
+      repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+      state: present
+      filename: kubernetes.list
+
+  - name: Install Kubernetes binaries
+    apt: 
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+        - kubelet=1.18.12-00
+        - kubeadm=1.18.12-00
+        - kubectl=1.18.12-00
+
+  - name: Prevent kubelet from being upgraded
+    dpkg_selections:
+      name: kubelet
+      selection: hold
+
+  - name: Prevent kubeadm from being upgraded
+    dpkg_selections:
+      name: kubeadm
+      selection: hold
+
+  - name: Prevent kubectl from being upgraded
+    dpkg_selections:
+      name: kubectl
+      selection: hold
+
+  - name: Configure node ip
+    lineinfile:
+      path: /etc/default/kubelet
+      line: KUBELET_EXTRA_ARGS=--node-ip={{ node_ip }}
+      create: yes
+
+  - name: Restart kubelet
+    service:
+      name: kubelet
+      daemon_reload: yes
+      state: restarted
+
+  - name: Initialize the Kubernetes cluster using kubeadm
+    command: kubeadm init --apiserver-advertise-address="192.168.6.150" --apiserver-cert-extra-sans="192.168.6.150" --node-name k8s-master --pod-network-cidr=10.244.0.0/16
+  
+  - name: Create .kube folder for vagrant user
+    become: false
+    file:
+      path: /home/vagrant/.kube
+      state: directory
+      mode: "u=rwx,g=rwx,o=rx"
+
+  - name: Copy kubeconfig for vagrant user
+    command: "cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config"
+
+  - name: Fix kubeconfig permissions for vagrant user
+    file: path=/home/vagrant/.kube/config owner=vagrant group=docker mode=0700 state=file
+  
+  - name: Copy kubeconfig to local
+    copy:
+      src: /etc/kubernetes/admin.conf
+      dest: ../../kube-config
+      delegate_to: localhost
+
+  - name: Install the Tigera Calico operator and custom resource definitions.
+    become: false
+    command: kubectl apply -f https://docs.projectcalico.org/manifests/tigera-operator.yaml
+
+  - name: Copy the custom resources for calico
+    copy: src=custom-resources.yaml dest=/tmp/custom-resources.yaml mode=0666
+  
+  - name: Install Calico by creating the necessary custom resource.
+    become: false
+    command: kubectl apply -f /tmp/custom-resources.yaml
+
+  - name: Download helm installation script
+    become: false
+    command: curl -fsSL -o /tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+
+  - name: Install helm
+    command: /bin/bash /tmp/get_helm.sh
+
+  - name: Generate join command
+    command: kubeadm token create --print-join-command
+    register: join_command
+
+  - name: Copy join command to local file
+    local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
+
+  handlers:
+    - name: docker status
+      service: name=docker state=started

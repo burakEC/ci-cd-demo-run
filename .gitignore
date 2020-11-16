@@ -1,0 +1,4 @@
+.vagrant/
+kube-config
+join-command
+jenkins-admin-password

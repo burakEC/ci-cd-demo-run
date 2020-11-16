@@ -1,0 +1,32 @@
+ingress:
+  enabled: true
+  useSSL: false
+  ## annotations used by the ingress - ex for k8s nginx ingress controller:
+  ingress_annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.org/client-max-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+service:
+  http:
+    serviceType: ClusterIP
+    port: 3000
+    externalPort: 8280
+    externalHost: git.192.168.6.200.nip.io
+  ssh:
+    serviceType: NodePort
+    port: 22
+    nodePort: 30222
+    externalPort: 8022
+    externalHost: git.192.168.6.200.nip.io
+
+persistence:
+  enabled: true
+  giteaSize: 10Gi
+  postgresSize: 5Gi
+  storageClass: local-path
+  accessMode: ReadWriteOnce
+  annotations:
+    "helm.sh/resource-policy": keep

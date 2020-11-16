@@ -1,0 +1,12 @@
+- hosts: all
+  remote_user: "vagrant"
+  become: true
+  tasks:
+  - name: Copy the nexus values yaml
+    copy: src=../../Docker/daemon.json dest=/etc/docker/daemon.json mode=0640
+
+  - name: Restart docker
+    service:
+      name: docker
+      daemon_reload: yes
+      state: restarted

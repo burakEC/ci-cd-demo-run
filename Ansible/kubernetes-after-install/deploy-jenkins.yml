@@ -1,0 +1,28 @@
+- hosts: all
+  remote_user: "vagrant"
+  become: false
+  tasks:
+#  - name: Dowload Local Path Provisioner for PV
+#    command: git -C /tmp/ clone https://github.com/rancher/local-path-provisioner.git
+
+#  - name: Deploy Local Path Provisioner via Helm
+#    command: helm install demo-provisioner /tmp/local-path-provisioner/deploy/chart/
+
+  - name: Copy the jenkins values yaml
+    copy: src=../../Helm/jenkins/values.yaml dest=/tmp/jenkins-values.yaml mode=0660
+
+  - name: Add jenkins repo
+    command: helm repo add jenkins https://charts.jenkins.io
+
+  - name: Update helm repos
+    command: helm repo update
+
+  - name: Deploy Jenkins via Helm
+    command: helm install demo-jenkins -f /tmp/jenkins-values.yaml jenkins/jenkins
+
+  - name: Copy admin password
+    shell: kubectl get secret --namespace default demo-jenkins -o jsonpath="{.data.jenkins-admin-password}" | base64 --decode
+    register: admin_password
+
+  - name: Copy Jenkins admin password to local
+    local_action: copy content="{{ admin_password.stdout_lines[0] }}" dest="../../jenkins-admin-password"

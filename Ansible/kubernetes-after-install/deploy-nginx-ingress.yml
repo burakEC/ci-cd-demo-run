@@ -1,0 +1,13 @@
+---
+- hosts: all
+  remote_user: "vagrant"
+  become: false
+  tasks:
+  - name: Add nginx repo
+    command: helm repo add nginx-stable https://helm.nginx.com/stable
+
+  - name: Update helm repos
+    command: helm repo update
+
+  - name: Deploy nginx ingress via Helm
+    command: helm install demo-ingress nginx-stable/nginx-ingress

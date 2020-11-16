@@ -1,0 +1,99 @@
+pipeline {
+    agent {
+        kubernetes {
+            label 'build-service'
+            defaultContainer 'jnlp'
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    job: build-service
+spec:
+  containers:
+  - name: maven
+    image: maven:3.6.0-jdk-11-slim
+    command: ["cat"]
+    tty: true
+    volumeMounts:
+    - name: repository
+      mountPath: /root/.m2/repository
+  - name: docker
+    image: docker:18.09.3
+    command: ["cat"]
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  - name: helm
+    image: lachlanevenson/k8s-helm:v3.1.1
+    command: ["cat"]
+    tty: true
+    volumeMounts:
+    - name: kube-config
+      mountPath: /tmp/config    
+  volumes:
+  - name: repository
+    persistentVolumeClaim:
+      claimName: repository
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+  - name: kube-config
+    hostPath:
+      path: /etc/kubernetes/admin.conf
+"""
+        }
+    }
+
+    stages {
+        stage ('compile') {
+            steps {
+                container('maven') {
+                    sh 'mvn clean compile test-compile'
+                }
+            }
+        }
+        stage ('unit test') {
+            steps {
+                container('maven') {
+                    sh 'mvn test'
+                }
+            }
+        }
+        stage ('integration test') {
+            steps {
+                container ('maven') {
+                    sh 'mvn verify'
+                }
+            }
+        }
+        stage ('build artifact') {
+            steps {
+                container('maven') {
+                    sh "mvn package -Dmaven.test.skip -Drevision=1.1"
+                }
+                container('docker') {
+                    script {
+                        sh "docker build . -t registry.192.168.6.200.nip.io/demo/app:1.17.0 --build-arg REVISION=1.1"
+                    }
+                }
+            }
+        }
+        stage ('publish artifact') {
+            steps {
+                container('docker') {
+                    sh "docker login registry.192.168.6.200.nip.io --username admin --password admin123"
+                    sh "docker push registry.192.168.6.200.nip.io/demo/app:1.17.0"
+                }
+            }
+        }
+        stage('Kubernetes Deploy') {
+            steps {
+                container('helm') {
+                    sh "helm upgrade --install --force demo ./helm --kubeconfig /tmp/config"
+                }
+            }
+        }
+    }
+}

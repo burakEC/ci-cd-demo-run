@@ -1,0 +1,30 @@
+- hosts: all
+  remote_user: "vagrant"
+  become: false
+  tasks:
+  - name: Dowload Local Path Provisioner for PV
+    command: git -C /tmp/ clone https://github.com/rancher/local-path-provisioner.git
+
+  - name: Deploy Local Path Provisioner via Helm
+    command: helm install demo-provisioner /tmp/local-path-provisioner/deploy/chart/
+
+  - name: Copy the nexus values yaml
+    copy: src=../../Helm/nexus/values.yaml dest=/tmp/nexus-values.yaml mode=0660
+
+  - name: Add oteemocharts repo
+    command: helm repo add oteemocharts https://oteemo.github.io/charts
+
+  - name: Update helm repos
+    command: helm repo update
+
+  - name: Deploy Nexus via Helm
+    command: helm install demo-nexus -f /tmp/nexus-values.yaml oteemocharts/sonatype-nexus
+  
+  - name: Copy the repository file
+    copy: src=../../Docker/pvc-repository.yaml dest=/tmp/pvc-repository.yaml mode=0660
+
+  - name: Create repository pvc
+    command: kubectl apply -f /tmp/pvc-repository.yaml
+
+  - name: Create docker registry login secret
+    command: kubectl create secret docker-registry nexus-registry --docker-server=registry.192.168.6.200.nip.io --docker-username=admin --docker-password=admin123

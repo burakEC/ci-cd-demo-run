@@ -1,0 +1,16 @@
+---
+- hosts: all
+  remote_user: "vagrant"
+  become: false
+  tasks:
+  - name: Copy the metallb values yaml
+    copy: src=../../Helm/metallb/values.yaml dest=/tmp/metallb-values.yaml mode=0660
+
+  - name: Add bitnami repo
+    command: helm repo add bitnami https://charts.bitnami.com/bitnami
+
+  - name: Update helm repos
+    command: helm repo update
+
+  - name: Deploy Metallb via Helm
+    command: helm install demo-metallb -f /tmp/metallb-values.yaml bitnami/metallb
